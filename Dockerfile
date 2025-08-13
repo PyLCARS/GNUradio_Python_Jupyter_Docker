@@ -2,6 +2,10 @@ FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
+# Build args for UID/GID (defaults to 1001 to avoid conflicts)
+ARG USER_ID=1001
+ARG GROUP_ID=1001
+
 RUN apt-get update && apt-get install -y \
     python3-pip \
     python3-venv \
@@ -20,10 +24,10 @@ RUN /opt/venv/bin/pip install --no-cache-dir \
     ipywidgets \
     plotly
 
-# Create jovyan user with UID 1000 (matches most Linux desktop users)
-# The fix: explicitly set UID/GID to match common host systems
-RUN useradd -m -s /bin/bash -u 1000 -U jovyan && \
-    # Give jovyan ownership of the venv
+# Create jovyan user - use -o flag to allow non-unique UID/GID
+# This is the simplest solution for containers
+RUN groupadd -o -g ${GROUP_ID} jovyan && \
+    useradd -o -m -s /bin/bash -u ${USER_ID} -g jovyan jovyan && \
     chown -R jovyan:jovyan /opt/venv
 
 USER jovyan
