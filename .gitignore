@@ -1,11 +1,49 @@
-# Jupyter Notebook checkpoint files and folders
+# Temporary Docker Compose override files
+.docker-compose.override.yml
+
+# Exported Docker images
+*.tar.gz
+
+# Jupyter
 .ipynb_checkpoints/
-*/.ipynb_checkpoints/*
-
-# Jupyter Lab workspace settings
-.jupyter/
 *.ipynb_checkpoints
+.jupyter/
+.local/
 
-# Jupyter temporary files
-.ipynb_checkpoints
-**/.ipynb_checkpoints/
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+
+# Optional: Uncomment if you want to ignore requirements files
+# requirements.txt
+# pyproject.toml
+
+# Data files (uncomment if you don't want to track data)
+# data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# GNU Radio temporary files
+*.grc.bak
+*.grc~
+
+# Local environment
+.env
+.env.local

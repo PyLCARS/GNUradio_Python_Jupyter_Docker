@@ -1,0 +1,54 @@
+# Git
+.git
+.gitignore
+
+# Docker
+.dockerignore
+docker-compose.yml
+docker-compose.*.yml
+.docker-compose.override.yml
+
+# Notebooks and data (don't copy into image, use volumes)
+notebooks/
+flowgraphs/
+scripts/
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Documentation
+*.md
+docs/
+
+# Backups and exports
+*.tar.gz
+*.tar
+*.zip
+*.bak
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Keep requirements files (they're needed for build)
+!requirements.txt
+!requirements*.txt
+!pyproject.toml

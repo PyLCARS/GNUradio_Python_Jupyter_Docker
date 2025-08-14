@@ -51,7 +51,6 @@ fi
 export IMAGE_NAME
 export CONTAINER_NAME
 export HOST_PORT=$PORT
-export PWD=$(pwd)  # Ensure PWD is exported for docker-compose volumes
 
 # Get IP
 IP=$(hostname -I | awk '{print $1}')
@@ -82,13 +81,13 @@ image_exists() {
 
 # Show current variant info
 show_variant_info() {
-    echo -e "${MAGENTA}╔════════════════════════════════════════╗${NC}"
+    echo -e "${MAGENTA}â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—${NC}"
     if [ -z "$VARIANT" ]; then
-        echo -e "${MAGENTA}║ Using: ${CYAN}DEFAULT${MAGENTA} configuration        ║${NC}"
+        echo -e "${MAGENTA}â•‘ Using: ${CYAN}DEFAULT${MAGENTA} configuration        â•‘${NC}"
     else
-        echo -e "${MAGENTA}║ Using variant: ${CYAN}${VARIANT}$(printf '%*s' $((24-${#VARIANT})) '')${MAGENTA}║${NC}"
+        echo -e "${MAGENTA}â•‘ Using variant: ${CYAN}${VARIANT}$(printf '%*s' $((24-${#VARIANT})) '')${MAGENTA}â•‘${NC}"
     fi
-    echo -e "${MAGENTA}╚════════════════════════════════════════╝${NC}"
+    echo -e "${MAGENTA}â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•${NC}"
     echo -e "  Image:     ${CYAN}${IMAGE_NAME}${NC}"
     echo -e "  Container: ${CYAN}${CONTAINER_NAME}${NC}"
     echo -e "  Port:      ${CYAN}${PORT}${NC}"
@@ -96,25 +95,60 @@ show_variant_info() {
 }
 
 case "$COMMAND" in
-    build)
+     rebuild)
         show_variant_info
-        echo -e "${CYAN}🔨 Building GNU Radio Lab image...${NC}"
+        echo -e "${CYAN}🔨 Rebuilding GNU Radio Lab image from scratch...${NC}"
+        echo -e "${YELLOW}This will ignore all cached layers${NC}"
 
         # Get current user's UID and GID for the build
         USER_ID=$(id -u)
         GROUP_ID=$(id -g)
         echo -e "${YELLOW}Building with UID: ${USER_ID}, GID: ${GROUP_ID}${NC}"
 
-        # Create all required directories before build
-        echo -e "${YELLOW}Creating directories...${NC}"
-        for dir in notebooks flowgraphs scripts data; do
-            if [ ! -d "$dir" ]; then
-                mkdir -p "$dir"
-                echo -e "  Created: ${CYAN}$dir${NC}"
-            else
-                echo -e "  Exists:  ${GREEN}$dir${NC}"
-            fi
-        done
+        # Create directories
+        mkdir -p notebooks flowgraphs scripts data
+
+        # Force rebuild by using docker build directly
+        BUILD_CONTEXT="."
+        DOCKERFILE="Dockerfile"
+
+        echo -e "${YELLOW}Removing any existing image to ensure fresh build...${NC}"
+        docker rmi ${IMAGE_NAME} 2>/dev/null || true
+
+        # Build directly with docker build for guaranteed no-cache
+        docker build \
+            --no-cache \
+            --pull \
+            --tag ${IMAGE_NAME} \
+            --build-arg USER_ID=${USER_ID} \
+            --build-arg GROUP_ID=${GROUP_ID} \
+            -f ${DOCKERFILE} \
+            ${BUILD_CONTEXT}
+
+        if image_exists; then
+            echo -e "${GREEN}✅ Image rebuilt successfully: ${CYAN}${IMAGE_NAME}${NC}"
+            echo -e "${GREEN}   UID/GID: ${USER_ID}/${GROUP_ID}${NC}"
+
+            # Show image details to confirm it's new
+            echo -e "${YELLOW}Image details:${NC}"
+            docker images ${IMAGE_NAME} --format "table {{.Repository}}\t{{.Tag}}\t{{.ID}}\t{{.CreatedAt}}\t{{.Size}}"
+        else
+            echo -e "${RED}❌ Rebuild failed${NC}"
+            exit 1
+        fi
+        ;;
+
+    build)
+        show_variant_info
+        echo -e "${CYAN}ðŸ”¨ Building GNU Radio Lab image...${NC}"
+
+        # Get current user's UID and GID for the build
+        USER_ID=$(id -u)
+        GROUP_ID=$(id -g)
+        echo -e "${YELLOW}Building with UID: ${USER_ID}, GID: ${GROUP_ID}${NC}"
+
+        # Create directories
+        mkdir -p notebooks flowgraphs scripts data
 
         # Create the override file
         create_compose_override
@@ -131,10 +165,10 @@ case "$COMMAND" in
         rm -f .docker-compose.override.yml
 
         if image_exists; then
-            echo -e "${GREEN}✅ Image built successfully: ${CYAN}${IMAGE_NAME}${NC}"
+            echo -e "${GREEN}âœ… Image built successfully: ${CYAN}${IMAGE_NAME}${NC}"
             echo -e "${GREEN}   UID/GID: ${USER_ID}/${GROUP_ID}${NC}"
         else
-            echo -e "${RED}❌ Build failed${NC}"
+            echo -e "${RED}âŒ Build failed${NC}"
             exit 1
         fi
         ;;
@@ -144,104 +178,37 @@ case "$COMMAND" in
 
         # Check if image exists
         if ! image_exists; then
-            echo -e "${YELLOW}⚠️  Image ${CYAN}${IMAGE_NAME}${YELLOW} not found!${NC}"
+            echo -e "${YELLOW}âš ï¸  Image ${CYAN}${IMAGE_NAME}${YELLOW} not found!${NC}"
             echo -e "${YELLOW}   Run: ${CYAN}$0 build ${VARIANT}${NC}"
             exit 1
         fi
 
-        echo -e "${CYAN}🚀 Starting GNU Radio Lab...${NC}"
+        echo -e "${CYAN}ðŸš€ Starting GNU Radio Lab...${NC}"
 
-        # Create directories BEFORE docker-compose tries to mount them
-        # This is critical for SSHFS or other mounted filesystems
-        echo -e "${YELLOW}Creating directories...${NC}"
-        for dir in notebooks flowgraphs scripts data; do
-            if [ ! -d "$dir" ]; then
-                mkdir -p "$dir"
-                echo -e "  Created: ${CYAN}$dir${NC}"
-            else
-                echo -e "  Exists:  ${GREEN}$dir${NC}"
-            fi
-        done
-
-        # Ensure directories are accessible
-        touch notebooks/.test 2>/dev/null && rm notebooks/.test 2>/dev/null
-        if [ $? -ne 0 ]; then
-            echo -e "${RED}⚠️  Cannot write to notebooks directory!${NC}"
-            echo -e "${YELLOW}   This might be a permission issue with the mounted filesystem.${NC}"
-        fi
+        # Create directories if needed
+        mkdir -p notebooks flowgraphs scripts data
 
         # Create the override file
         create_compose_override
 
         # Start container with specific project name
-        # Try to start with docker-compose
-        docker-compose -p ${COMPOSE_PROJECT} -f docker-compose.yml -f .docker-compose.override.yml up -d 2>&1 | tee /tmp/docker-start.log
-
-        # Check if the command succeeded
-        if [ ${PIPESTATUS[0]} -ne 0 ]; then
-            echo -e "${RED}❌ Docker Compose failed to start the container${NC}"
-
-            # Check for the specific SSHFS error
-            if grep -q "mkdir.*file exists" /tmp/docker-start.log; then
-                echo -e "${YELLOW}Detected SSHFS mount issue. Trying alternative approach...${NC}"
-
-                # Remove any partially created container
-                echo -e "${YELLOW}Cleaning up failed container...${NC}"
-                docker rm -f ${CONTAINER_NAME} 2>/dev/null
-
-                # Try running with docker run directly as a fallback
-                echo -e "${YELLOW}Starting container with docker run...${NC}"
-                docker run -d \
-                    --name ${CONTAINER_NAME} \
-                    -p ${PORT}:8888 \
-                    -v "$(pwd)/notebooks:/home/jovyan/notebooks" \
-                    -v "$(pwd)/flowgraphs:/home/jovyan/flowgraphs" \
-                    -v "$(pwd)/scripts:/home/jovyan/scripts" \
-                    -v "$(pwd)/data:/home/jovyan/data" \
-                    -e LANG=C.UTF-8 \
-                    -e LC_ALL=C.UTF-8 \
-                    -e JUPYTER_ENABLE_LAB=yes \
-                    --restart unless-stopped \
-                    ${IMAGE_NAME}
-
-                if [ $? -eq 0 ]; then
-                    echo -e "${GREEN}✅ Started with docker run fallback${NC}"
-                    # Clean up override since we're not using docker-compose
-                    rm -f .docker-compose.override.yml
-                    # Continue with the rest of the start process
-                else
-                    echo -e "${RED}Both docker-compose and docker run failed${NC}"
-                    echo -e "${YELLOW}This appears to be a Docker issue with SSHFS mounts${NC}"
-                    echo ""
-                    echo -e "${YELLOW}Options to fix:${NC}"
-                    echo -e "1. ${CYAN}$0 fix-sshfs${NC} - Restart Docker daemon"
-                    echo -e "2. ${CYAN}$0 clean ${VARIANT}${NC} - Remove container and try again"
-                    echo -e "3. Work from a local directory instead of SSHFS mount"
-                    rm -f .docker-compose.override.yml
-                    exit 1
-                fi
-            else
-                echo -e "${YELLOW}Check the error above for details${NC}"
-                rm -f .docker-compose.override.yml
-                exit 1
-            fi
-        fi
+        docker-compose -p ${COMPOSE_PROJECT} -f docker-compose.yml -f .docker-compose.override.yml up -d
 
         # Clean up override
         rm -f .docker-compose.override.yml
 
         # Wait for startup
-        echo -e "${YELLOW}⏳ Waiting for Jupyter to start...${NC}"
+        echo -e "${YELLOW}â³ Waiting for Jupyter to start...${NC}"
         sleep 5
 
         # Check if running
         if is_running; then
             echo ""
-            echo -e "${GREEN}✅ GNU Radio Jupyter Lab is running!${NC}"
+            echo -e "${GREEN}âœ… GNU Radio Jupyter Lab is running!${NC}"
             echo ""
-            echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
-            echo -e "${BLUE}║ ${GREEN}📡 GNU Radio ${CYAN}3.10.9.2${GREEN} + Jupyter Lab ${BLUE}║${NC}"
-            echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
+            echo -e "${BLUE}â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—${NC}"
+            echo -e "${BLUE}â•‘ ${GREEN}ðŸ“¡ GNU Radio ${CYAN}3.10.9.2${GREEN} + Jupyter Lab ${BLUE}â•‘${NC}"
+            echo -e "${BLUE}â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•${NC}"
             echo ""
             echo -e "${YELLOW}Access from this machine:${NC}"
             echo -e "  ${CYAN}http://localhost:${PORT}/lab?token=${TOKEN}${NC}"
@@ -254,18 +221,18 @@ case "$COMMAND" in
             if [ ! -z "$VARIANT" ]; then
                 echo -e "${MAGENTA}Variant: ${CYAN}${VARIANT}${NC}"
             fi
-            echo -e "${BLUE}════════════════════════════════════════${NC}"
+            echo -e "${BLUE}â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•${NC}"
             echo ""
-            echo -e "${YELLOW}📝 Notebooks saved in: ${CYAN}./notebooks/${NC}"
+            echo -e "${YELLOW}ðŸ“ Notebooks saved in: ${CYAN}./notebooks/${NC}"
         else
-            echo -e "${RED}❌ Failed to start. Check logs:${NC}"
+            echo -e "${RED}âŒ Failed to start. Check logs:${NC}"
             docker logs ${CONTAINER_NAME} --tail=50
         fi
         ;;
 
     stop|down)
         show_variant_info
-        echo -e "${YELLOW}🛑 Stopping GNU Radio Lab...${NC}"
+        echo -e "${YELLOW}ðŸ›‘ Stopping GNU Radio Lab...${NC}"
 
         # Create the override file
         create_compose_override
@@ -275,7 +242,7 @@ case "$COMMAND" in
         # Clean up override
         rm -f .docker-compose.override.yml
 
-        echo -e "${GREEN}✅ Stopped${NC}"
+        echo -e "${GREEN}âœ… Stopped${NC}"
         ;;
 
     restart)
@@ -286,13 +253,13 @@ case "$COMMAND" in
 
     logs)
         show_variant_info
-        echo -e "${YELLOW}📋 Showing logs (Ctrl+C to exit)...${NC}"
+        echo -e "${YELLOW}ðŸ“‹ Showing logs (Ctrl+C to exit)...${NC}"
         docker logs -f ${CONTAINER_NAME}
         ;;
 
     clean)
         show_variant_info
-        echo -e "${RED}🧹 Cleaning Docker environment...${NC}"
+        echo -e "${RED}ðŸ§¹ Cleaning Docker environment...${NC}"
         echo -e "${YELLOW}This will remove:${NC}"
         echo -e "  - Container: ${CYAN}${CONTAINER_NAME}${NC}"
         echo -e "  - Image: ${CYAN}${IMAGE_NAME}${NC}"
@@ -303,7 +270,7 @@ case "$COMMAND" in
             docker stop ${CONTAINER_NAME} 2>/dev/null || true
             docker rm ${CONTAINER_NAME} 2>/dev/null || true
             docker rmi ${IMAGE_NAME} 2>/dev/null || true
-            echo -e "${GREEN}✅ Cleaned${NC}"
+            echo -e "${GREEN}âœ… Cleaned${NC}"
         else
             echo -e "${YELLOW}Cancelled${NC}"
         fi
@@ -311,10 +278,10 @@ case "$COMMAND" in
 
     status)
         show_variant_info
-        echo -e "${BLUE}════════════════════════════════════════${NC}"
+        echo -e "${BLUE}â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•${NC}"
         if is_running; then
-            echo -e "${GREEN}✅ GNU Radio Lab is RUNNING${NC}"
-            echo -e "${BLUE}════════════════════════════════════════${NC}"
+            echo -e "${GREEN}âœ… GNU Radio Lab is RUNNING${NC}"
+            echo -e "${BLUE}â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•${NC}"
             echo ""
             echo -e "${YELLOW}Local access:${NC}"
             echo -e "  ${CYAN}http://localhost:${PORT}/lab?token=${TOKEN}${NC}"
@@ -325,8 +292,8 @@ case "$COMMAND" in
             # Show container stats
             docker stats --no-stream ${CONTAINER_NAME}
         else
-            echo -e "${RED}○ GNU Radio Lab is STOPPED${NC}"
-            echo -e "${BLUE}════════════════════════════════════════${NC}"
+            echo -e "${RED}â—‹ GNU Radio Lab is STOPPED${NC}"
+            echo -e "${BLUE}â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•${NC}"
             if image_exists; then
                 echo -e "${GREEN}Image exists: ${CYAN}${IMAGE_NAME}${NC}"
                 echo -e "${YELLOW}Run '$0 start ${VARIANT}' to launch${NC}"
@@ -340,7 +307,7 @@ case "$COMMAND" in
     shell|bash)
         show_variant_info
         if is_running; then
-            echo -e "${YELLOW}🖥️  Opening shell in container...${NC}"
+            echo -e "${YELLOW}ðŸ–¥ï¸  Opening shell in container...${NC}"
             echo -e "${CYAN}Type 'exit' to return${NC}"
             docker exec -it ${CONTAINER_NAME} bash
         else
@@ -351,12 +318,12 @@ case "$COMMAND" in
     test)
         show_variant_info
         if is_running; then
-            echo -e "${YELLOW}🧪 Running GNU Radio test...${NC}"
+            echo -e "${YELLOW}ðŸ§ª Running GNU Radio test...${NC}"
             docker exec ${CONTAINER_NAME} python3 -c "
 import sys
 sys.path.append('/usr/lib/python3/dist-packages')
 from gnuradio import gr
-print(f'✅ GNU Radio {gr.version()} is working!')
+print(f'âœ… GNU Radio {gr.version()} is working!')
 "
         else
             echo -e "${RED}Container is not running. Start it first with '$0 start ${VARIANT}'${NC}"
@@ -364,9 +331,9 @@ print(f'✅ GNU Radio {gr.version()} is working!')
         ;;
 
     list)
-        echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
-        echo -e "${BLUE}║     ${GREEN}GNU Radio Lab Variants${BLUE}             ║${NC}"
-        echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
+        echo -e "${BLUE}â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—${NC}"
+        echo -e "${BLUE}â•‘     ${GREEN}GNU Radio Lab Variants${BLUE}             â•‘${NC}"
+        echo -e "${BLUE}â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•${NC}"
         echo ""
         echo -e "${YELLOW}Images:${NC}"
         docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}" | grep "${BASE_NAME}" || echo "  None found"
@@ -379,9 +346,9 @@ print(f'✅ GNU Radio {gr.version()} is working!')
         show_variant_info
         if image_exists; then
             EXPORT_NAME="${IMAGE_NAME}-$(date +%Y%m%d-%H%M%S).tar.gz"
-            echo -e "${YELLOW}📦 Exporting image to ${CYAN}${EXPORT_NAME}${NC}..."
+            echo -e "${YELLOW}ðŸ“¦ Exporting image to ${CYAN}${EXPORT_NAME}${NC}..."
             docker save ${IMAGE_NAME} | gzip > ${EXPORT_NAME}
-            echo -e "${GREEN}✅ Exported successfully!${NC}"
+            echo -e "${GREEN}âœ… Exported successfully!${NC}"
             echo -e "   Size: $(du -h ${EXPORT_NAME} | cut -f1)"
         else
             echo -e "${RED}Image not found: ${CYAN}${IMAGE_NAME}${NC}"
@@ -396,9 +363,9 @@ print(f'✅ GNU Radio {gr.version()} is working!')
             exit 1
         fi
         if [ -f "$VARIANT" ]; then
-            echo -e "${YELLOW}📦 Importing image from ${CYAN}${VARIANT}${NC}..."
+            echo -e "${YELLOW}ðŸ“¦ Importing image from ${CYAN}${VARIANT}${NC}..."
             docker load < $VARIANT
-            echo -e "${GREEN}✅ Import complete!${NC}"
+            echo -e "${GREEN}âœ… Import complete!${NC}"
         else
             echo -e "${RED}File not found: ${CYAN}${VARIANT}${NC}"
         fi
@@ -406,67 +373,15 @@ print(f'✅ GNU Radio {gr.version()} is working!')
 
     backup)
         BACKUP_NAME="gnuradio_backup_$(date +%Y%m%d_%H%M%S).tar.gz"
-        echo -e "${YELLOW}💾 Creating backup...${NC}"
+        echo -e "${YELLOW}ðŸ’¾ Creating backup...${NC}"
         tar -czf ${BACKUP_NAME} notebooks/ flowgraphs/ scripts/ data/ Dockerfile docker-compose.yml $0 2>/dev/null
-        echo -e "${GREEN}✅ Backup saved as: ${CYAN}${BACKUP_NAME}${NC}"
-        ;;
-
-    rescue)
-        show_variant_info
-        echo -e "${YELLOW}🚑 Rescue mode - Fixing stuck container...${NC}"
-
-        # Check if container exists
-        if docker ps -a --format "{{.Names}}" | grep -q "^${CONTAINER_NAME}$"; then
-            echo -e "${YELLOW}Found container: ${CONTAINER_NAME}${NC}"
-
-            # Get container status
-            STATUS=$(docker inspect ${CONTAINER_NAME} --format='{{.State.Status}}')
-            echo -e "Status: ${CYAN}${STATUS}${NC}"
-
-            # Remove the container
-            echo -e "${YELLOW}Removing container...${NC}"
-            docker rm -f ${CONTAINER_NAME}
-
-            if [ $? -eq 0 ]; then
-                echo -e "${GREEN}✅ Container removed${NC}"
-                echo ""
-                echo "Now you can try starting again:"
-                echo -e "  ${CYAN}$0 start ${VARIANT}${NC}"
-            else
-                echo -e "${RED}Failed to remove container${NC}"
-            fi
-        else
-            echo -e "${GREEN}No stuck container found${NC}"
-        fi
-
-        # Clean up any docker-compose remnants
-        docker-compose -p ${COMPOSE_PROJECT} down 2>/dev/null
-        rm -f .docker-compose.override.yml
-        ;;
-
-    fix-sshfs)
-        echo -e "${YELLOW}🔧 Applying SSHFS workaround...${NC}"
-        echo ""
-        echo "This will restart Docker daemon to clear mount cache issues."
-        echo -e "${RED}This will affect all running containers!${NC}"
-        read -p "Continue? (y/N) " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            echo -e "${YELLOW}Restarting Docker daemon...${NC}"
-            sudo systemctl restart docker
-            sleep 3
-            echo -e "${GREEN}✅ Docker restarted${NC}"
-            echo ""
-            echo "Now try: $0 start ${VARIANT}"
-        else
-            echo "Cancelled"
-        fi
+        echo -e "${GREEN}âœ… Backup saved as: ${CYAN}${BACKUP_NAME}${NC}"
         ;;
 
     help|--help|-h|*)
-        echo -e "${BLUE}╔════════════════════════════════════════╗${NC}"
-        echo -e "${BLUE}║  ${GREEN}GNU Radio Lab Management Script${BLUE}       ║${NC}"
-        echo -e "${BLUE}╚════════════════════════════════════════╝${NC}"
+        echo -e "${BLUE}â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—${NC}"
+        echo -e "${BLUE}â•‘  ${GREEN}GNU Radio Lab Management Script${BLUE}       â•‘${NC}"
+        echo -e "${BLUE}â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•${NC}"
         echo ""
         echo "Usage: $0 {command} [variant]"
         echo ""
@@ -478,6 +393,7 @@ print(f'✅ GNU Radio {gr.version()} is working!')
         echo ""
         echo "Commands:"
         echo -e "  ${CYAN}build [variant]${NC}  - Build image"
+        echo -e "  ${CYAN}rebuild [variant]${NC}- Rebuild from scratch (no cache)"
         echo -e "  ${CYAN}start [variant]${NC}  - Start container"
         echo -e "  ${CYAN}stop [variant]${NC}   - Stop container"
         echo -e "  ${CYAN}restart [variant]${NC}- Restart container"
@@ -490,11 +406,9 @@ print(f'✅ GNU Radio {gr.version()} is working!')
         echo -e "  ${CYAN}export [variant]${NC} - Export image to tar.gz"
         echo -e "  ${CYAN}import <file>${NC}    - Import image from tar.gz"
         echo -e "  ${CYAN}backup${NC}           - Backup notebooks and config"
-        echo -e "  ${CYAN}rescue [variant]${NC} - Fix stuck container"
-        echo -e "  ${CYAN}fix-sshfs${NC}        - Fix SSHFS mount issues"
         echo -e "  ${CYAN}help${NC}             - Show this help"
         echo ""
-        echo -e "${BLUE}════════════════════════════════════════${NC}"
+        echo -e "${BLUE}â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•${NC}"
         echo "Examples:"
         echo -e "  ${GREEN}$0 build dev${NC}     # Build development version"
         echo -e "  ${GREEN}$0 start dev${NC}     # Start development version"
@@ -503,7 +417,7 @@ print(f'✅ GNU Radio {gr.version()} is working!')
         echo ""
 
         # Show current status
-        echo -e "${BLUE}════════════════════════════════════════${NC}"
+        echo -e "${BLUE}â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•${NC}"
         echo -e "${YELLOW}Available variants:${NC}"
         docker images --format "  {{.Repository}}" | grep "^${BASE_NAME}" | sed "s/^${BASE_NAME}$/  ${BASE_NAME} (default)/" | sed "s/^${BASE_NAME}-/  /" || echo "  None built yet"
         ;;
