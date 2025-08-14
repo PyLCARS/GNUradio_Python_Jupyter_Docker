@@ -1,0 +1,52 @@
+[project]
+name = "gnuradio-jupyter"
+version = "1.0.0"
+description = "GNU Radio Jupyter Lab Environment"
+requires-python = ">=3.12"
+
+dependencies = [
+    # Core Jupyter packages
+    "jupyterlab>=4.0.0",
+    "notebook>=7.0.0", 
+    "ipywidgets>=8.0.0",
+    
+    # Visualization - constrained for numpy 1.x
+    "plotly>=5.0.0",
+    "matplotlib>=3.5,<3.9",  # 3.9+ may have numpy 2.x issues
+    
+    # Scientific computing - MUST use numpy 1.x for GNU Radio
+    "numpy>=1.24,<2.0",      # GNU Radio compiled against numpy 1.x
+    "scipy>=1.10,<1.14",     # Later versions may require numpy 2.x
+    "pandas>=2.0,<2.2",      # 2.2+ prefers numpy 2.x
+]
+
+[project.optional-dependencies]
+rf = [
+    "scikit-rf",     # RF/Microwave engineering toolkit
+    # "pyrtlsdr",    # Disabled - requires system librtlsdr
+]
+dev = [
+    "ipdb",          # Debugger for Jupyter
+    "black",         # Code formatter  
+    "ruff<0.5.0",    # Fast linter (constrained for numpy 1.x)
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.uv]
+# UV specific configuration
+compile = true  # Compile Python bytecode for faster imports
+
+[tool.black]
+line-length = 100
+target-version = ['py312']
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+# Numpy 1.x compatibility note
+# GNU Radio from Ubuntu 24.04 apt packages is compiled against NumPy 1.x
+# All packages must be compatible with numpy<2.0 constraint

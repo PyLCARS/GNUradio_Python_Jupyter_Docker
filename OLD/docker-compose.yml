@@ -1,0 +1,16 @@
+services:
+  jupyter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # Image and container names are set by the script via override
+    volumes:
+      - ./notebooks:/home/jovyan/notebooks
+      - ./flowgraphs:/home/jovyan/flowgraphs
+      - ./scripts:/home/jovyan/scripts
+      - ./data:/home/jovyan/data
+    environment:
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+      - JUPYTER_ENABLE_LAB=yes
+    restart: unless-stopped

@@ -1,52 +1,231 @@
 [project]
 name = "gnuradio-jupyter"
 version = "1.0.0"
-description = "GNU Radio Jupyter Lab Environment"
+description = "GNU Radio Jupyter Lab Environment with Template System"
 requires-python = ">=3.12"
 
 dependencies = [
-    # Core Jupyter packages
+    # Critical: NumPy 1.x for GNU Radio compatibility
+    "numpy>=1.24,<2.0",
+    
+    # Scientific computing (constrained for NumPy 1.x)
+    "scipy>=1.10,<1.14",
+    "pandas>=2.0,<2.2",
+    
+    # Visualization
+    "matplotlib>=3.5,<3.9",
+    "plotly>=5.0.0",
+    
+    # Jupyter ecosystem
     "jupyterlab>=4.0.0",
-    "notebook>=7.0.0", 
+    "notebook>=7.0.0",
+    "ipykernel>=6.0.0",
     "ipywidgets>=8.0.0",
     
-    # Visualization - constrained for numpy 1.x
-    "plotly>=5.0.0",
-    "matplotlib>=3.5,<3.9",  # 3.9+ may have numpy 2.x issues
-    
-    # Scientific computing - MUST use numpy 1.x for GNU Radio
-    "numpy>=1.24,<2.0",      # GNU Radio compiled against numpy 1.x
-    "scipy>=1.10,<1.14",     # Later versions may require numpy 2.x
-    "pandas>=2.0,<2.2",      # 2.2+ prefers numpy 2.x
+    # Utilities
+    "loguru>=0.7.0",
+    "toml>=0.10.0",
+    "uv>=0.1.0",
 ]
 
 [project.optional-dependencies]
 rf = [
-    "scikit-rf",     # RF/Microwave engineering toolkit
-    # "pyrtlsdr",    # Disabled - requires system librtlsdr
+    "scikit-rf",  # RF/Microwave engineering toolkit
 ]
 dev = [
-    "ipdb",          # Debugger for Jupyter
-    "black",         # Code formatter  
-    "ruff<0.5.0",    # Fast linter (constrained for numpy 1.x)
+    "ipdb",       # Interactive debugger
+    "black",      # Code formatter
+    "ruff<0.5.0", # Fast linter (constrained for numpy 1.x)
 ]
 
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
+# ============================================
+# Jupyter Notebook Template Configuration
+# ============================================
+# This section configures what gets added to new notebooks
+# The base GNU Radio template is always applied first,
+# then these project-specific additions are layered on top
+
+[tool.jupyter]
+# Enable project-specific features
+use_loguru = true
+
+# Loguru logging configuration
+[tool.jupyter.loguru_config]
+level = "DEBUG"
+format = "{time:HH:mm:ss.SSS} | {level:<8} | {name}:{function}:{line} - {message}"
+rotation = "100 MB"
+retention = "7 days"
+
+# Project-specific imports (added after base template)
+[tool.jupyter.imports]
+signal_processing = [
+    "from scipy import signal",
+    "from scipy.fft import fft, fftfreq, fftshift",
+    "from numpy.fft import rfft, rfftfreq",
+]
+
+data_analysis = [
+    "import pandas as pd",
+    "import plotly.graph_objects as go",
+    "import plotly.express as px",
+    "from pathlib import Path",
+]
+
+# Additional markdown sections for notebooks
+# These will be added as markdown cells after the base template
+[tool.jupyter.notebook_sections]
+notebook_sections = [
+    """## Project Configuration
+    
+This notebook is part of the GNU Radio SDR Analysis project.
+
+### Standard Parameters
+- Sample Rate: 2.4 MHz default (adjustable)
+- Center Frequency: Variable based on application
+- Data Format: Complex float32 (I/Q samples)
+""",
+    
+    """## Data Organization
+
+### Directory Structure
+- **Raw Captures**: `/home/jovyan/data/captures/`
+- **Processed Data**: `/home/jovyan/data/processed/`
+- **Flowgraphs**: `/home/jovyan/flowgraphs/`
+- **Scripts**: `/home/jovyan/scripts/`
+
+### File Naming Convention
+- Captures: `{date}_{time}_{freq_MHz}MHz_{rate_Msps}Msps.cf32`
+- Processed: `{original_name}_processed_{operation}.npz`
+""",
+]
+
+# Additional code cells to include in every notebook
+# These are added after the base template and imports
+[tool.jupyter.code_cells]
+code_cells = [
+    """# Project-specific configuration
+PROJECT_NAME = 'SDR_Analysis'
+SAMPLE_RATE = 2.4e6  # 2.4 MHz default sample rate
+CENTER_FREQ = 433.92e6  # 433.92 MHz (ISM band)
+
+# Create project directories
+from pathlib import Path
+CAPTURE_PATH = Path('/home/jovyan/data/captures')
+PROCESSED_PATH = Path('/home/jovyan/data/processed')
+CAPTURE_PATH.mkdir(parents=True, exist_ok=True)
+PROCESSED_PATH.mkdir(parents=True, exist_ok=True)
+
+logger.info(f"Project: {PROJECT_NAME}")
+logger.info(f"Sample Rate: {SAMPLE_RATE/1e6:.1f} MHz")
+logger.info(f"Center Frequency: {CENTER_FREQ/1e6:.2f} MHz")""",
+    
+    """# Common DSP helper functions for the project
+
+def compute_psd(signal, fs, nperseg=1024, scaling='density'):
+    \"\"\"
+    Compute Power Spectral Density using Welch's method
+    
+    Args:
+        signal: Complex or real signal
+        fs: Sample rate in Hz
+        nperseg: Segment length for Welch's method
+        scaling: 'density' for PSD, 'spectrum' for power spectrum
+    
+    Returns:
+        f: Frequency array
+        psd_db: PSD in dB
+    \"\"\"
+    from scipy import signal as sp_signal
+    f, psd = sp_signal.welch(signal, fs=fs, nperseg=nperseg, scaling=scaling)
+    psd_db = 10 * np.log10(psd + 1e-10)  # Avoid log(0)
+    return f, psd_db
+
+def plot_waterfall(signal, fs, nperseg=256, noverlap=None, cmap='viridis'):
+    \"\"\"
+    Plot spectrogram/waterfall display
+    
+    Args:
+        signal: Complex or real signal
+        fs: Sample rate in Hz
+        nperseg: FFT size
+        noverlap: Overlap between segments
+        cmap: Colormap for display
+    
+    Returns:
+        f, t, Sxx: Frequency array, time array, spectrogram
+    \"\"\"
+    from scipy import signal as sp_signal
+    
+    if noverlap is None:
+        noverlap = nperseg // 2
+    
+    f, t, Sxx = sp_signal.spectrogram(signal, fs=fs, nperseg=nperseg, noverlap=noverlap)
+    
+    plt.figure(figsize=(12, 6))
+    plt.pcolormesh(t, f/1e6, 10 * np.log10(Sxx + 1e-10), shading='gouraud', cmap=cmap)
+    plt.ylabel('Frequency [MHz]')
+    plt.xlabel('Time [sec]')
+    plt.colorbar(label='Power [dB]')
+    plt.title(f'Spectrogram (fs={fs/1e6:.1f} MHz)')
+    plt.tight_layout()
+    
+    return f, t, Sxx
+
+def save_signal(signal, filename, fs=None, fc=None, metadata=None):
+    \"\"\"
+    Save complex signal with metadata
+    
+    Args:
+        signal: Complex signal to save
+        filename: Output filename (without extension)
+        fs: Sample rate (optional)
+        fc: Center frequency (optional)
+        metadata: Additional metadata dict (optional)
+    \"\"\"
+    save_path = PROCESSED_PATH / f"{filename}.npz"
+    
+    save_dict = {'signal': signal}
+    if fs is not None:
+        save_dict['fs'] = fs
+    if fc is not None:
+        save_dict['fc'] = fc
+    if metadata is not None:
+        save_dict.update(metadata)
+    
+    np.savez_compressed(save_path, **save_dict)
+    logger.info(f"Saved signal to {save_path}")
+    
+def load_signal(filename):
+    \"\"\"Load signal and metadata from npz file\"\"\"
+    load_path = PROCESSED_PATH / f"{filename}.npz"
+    data = np.load(load_path)
+    
+    signal = data['signal']
+    metadata = {k: data[k] for k in data.keys() if k != 'signal'}
+    
+    logger.info(f"Loaded signal from {load_path}")
+    if metadata:
+        logger.info(f"Metadata: {metadata}")
+    
+    return signal, metadata
+
+logger.success("Helper functions loaded")""",
+]
+
+# ============================================
+# Docker/Build Configuration
+# ============================================
+
+[tool.docker]
+# Configuration for Docker build process
+numpy_constraint = "numpy>=1.24,<2.0"  # Critical for GNU Radio
+base_image = "ubuntu:24.04"
+gnuradio_version = "3.10.9.2"
+
 [tool.uv]
-# UV specific configuration
+# UV package manager configuration
 compile = true  # Compile Python bytecode for faster imports
-
-[tool.black]
-line-length = 100
-target-version = ['py312']
-
-[tool.ruff]
-line-length = 100
-target-version = "py312"
-
-# Numpy 1.x compatibility note
-# GNU Radio from Ubuntu 24.04 apt packages is compiled against NumPy 1.x
-# All packages must be compatible with numpy<2.0 constraint

@@ -1,10 +1,8 @@
 #!/bin/bash
 
-# GNU Radio Lab Management Script with Image Versioning
-# Usage: ./gnuradio-lab.sh [command] [image-variant]
-# Example: ./gnuradio-lab.sh build dev
-#          ./gnuradio-lab.sh start dev
-#          ./gnuradio-lab.sh start (uses default)
+# GNU Radio Lab Management Script with Template System Support
+# Version: 2.0.0 - With Notebook Templates
+# Usage: ./gnuradio-lab.sh [command] [variant]
 
 # Colors
 GREEN='\033[0;32m'
@@ -51,6 +49,7 @@ fi
 export IMAGE_NAME
 export CONTAINER_NAME
 export HOST_PORT=$PORT
+export VARIANT=${VARIANT:-default}
 
 # Get IP
 IP=$(hostname -I | awk '{print $1}')
@@ -81,22 +80,50 @@ image_exists() {
 
 # Show current variant info
 show_variant_info() {
-    echo -e "${MAGENTA}â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—${NC}"
+    echo -e "${MAGENTA}╔══════════════════════════════════════╗${NC}"
     if [ -z "$VARIANT" ]; then
-        echo -e "${MAGENTA}â•‘ Using: ${CYAN}DEFAULT${MAGENTA} configuration        â•‘${NC}"
+        echo -e "${MAGENTA}║ Using: ${CYAN}DEFAULT${MAGENTA} configuration        ║${NC}"
     else
-        echo -e "${MAGENTA}â•‘ Using variant: ${CYAN}${VARIANT}$(printf '%*s' $((24-${#VARIANT})) '')${MAGENTA}â•‘${NC}"
+        echo -e "${MAGENTA}║ Using variant: ${CYAN}${VARIANT}$(printf '%*s' $((24-${#VARIANT})) '')${MAGENTA}║${NC}"
     fi
-    echo -e "${MAGENTA}â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•${NC}"
+    echo -e "${MAGENTA}╚══════════════════════════════════════╝${NC}"
     echo -e "  Image:     ${CYAN}${IMAGE_NAME}${NC}"
     echo -e "  Container: ${CYAN}${CONTAINER_NAME}${NC}"
     echo -e "  Port:      ${CYAN}${PORT}${NC}"
     echo ""
 }
 
+# Check for required files
+check_required_files() {
+    local missing_files=()
+    
+    # Check for required build files
+    [ ! -f "Dockerfile" ] && missing_files+=("Dockerfile")
+    [ ! -f "pyproject.toml" ] && missing_files+=("pyproject.toml")
+    [ ! -f "jupyter_notebook_config.py" ] && missing_files+=("jupyter_notebook_config.py")
+    [ ! -f "gnuradio_base_template.json" ] && missing_files+=("gnuradio_base_template.json")
+    [ ! -f "verify_build.py" ] && missing_files+=("verify_build.py")
+    
+    if [ ${#missing_files[@]} -gt 0 ]; then
+        echo -e "${RED}❌ Missing required files:${NC}"
+        for file in "${missing_files[@]}"; do
+            echo -e "  ${RED}• $file${NC}"
+        done
+        echo -e "${YELLOW}Please ensure all required files are present.${NC}"
+        return 1
+    fi
+    return 0
+}
+
 case "$COMMAND" in
-     rebuild)
+    rebuild)
         show_variant_info
+        
+        # Check required files
+        if ! check_required_files; then
+            exit 1
+        fi
+        
         echo -e "${CYAN}🔨 Rebuilding GNU Radio Lab image from scratch...${NC}"
         echo -e "${YELLOW}This will ignore all cached layers${NC}"
 
@@ -108,67 +135,82 @@ case "$COMMAND" in
         # Create directories
         mkdir -p notebooks flowgraphs scripts data
 
-        # Force rebuild by using docker build directly
-        BUILD_CONTEXT="."
-        DOCKERFILE="Dockerfile"
+        # Show pyproject.toml hash for cache tracking
+        if [ -f pyproject.toml ]; then
+            PYPROJECT_HASH=$(md5sum pyproject.toml | cut -d' ' -f1)
+            echo -e "${YELLOW}pyproject.toml hash: ${CYAN}${PYPROJECT_HASH:0:8}${NC}"
+        fi
 
         echo -e "${YELLOW}Removing any existing image to ensure fresh build...${NC}"
         docker rmi ${IMAGE_NAME} 2>/dev/null || true
 
-        # Build directly with docker build for guaranteed no-cache
+        # Build with no cache
+        echo -e "${BLUE}Building with verification tests...${NC}"
         docker build \
             --no-cache \
             --pull \
             --tag ${IMAGE_NAME} \
             --build-arg USER_ID=${USER_ID} \
             --build-arg GROUP_ID=${GROUP_ID} \
-            -f ${DOCKERFILE} \
-            ${BUILD_CONTEXT}
+            -f Dockerfile \
+            .
 
-        if image_exists; then
+        if [ $? -eq 0 ]; then
             echo -e "${GREEN}✅ Image rebuilt successfully: ${CYAN}${IMAGE_NAME}${NC}"
+            echo -e "${GREEN}✅ All verification tests passed${NC}"
             echo -e "${GREEN}   UID/GID: ${USER_ID}/${GROUP_ID}${NC}"
-
-            # Show image details to confirm it's new
+            
+            # Show image details
             echo -e "${YELLOW}Image details:${NC}"
             docker images ${IMAGE_NAME} --format "table {{.Repository}}\t{{.Tag}}\t{{.ID}}\t{{.CreatedAt}}\t{{.Size}}"
         else
-            echo -e "${RED}❌ Rebuild failed${NC}"
+            echo -e "${RED}❌ Rebuild failed - check verification output above${NC}"
             exit 1
         fi
         ;;
 
     build)
         show_variant_info
-        echo -e "${CYAN}ðŸ”¨ Building GNU Radio Lab image...${NC}"
-
+        
+        # Check required files
+        if ! check_required_files; then
+            exit 1
+        fi
+        
+        echo -e "${CYAN}🔨 Building GNU Radio Lab image...${NC}"
+        
         # Get current user's UID and GID for the build
         USER_ID=$(id -u)
         GROUP_ID=$(id -g)
         echo -e "${YELLOW}Building with UID: ${USER_ID}, GID: ${GROUP_ID}${NC}"
+        
+        # Show layer cache status
+        echo -e "${YELLOW}Layer cache status:${NC}"
+        if [ -f pyproject.toml ]; then
+            PYPROJECT_HASH=$(md5sum pyproject.toml | cut -d' ' -f1)
+            echo -e "  pyproject.toml hash: ${CYAN}${PYPROJECT_HASH:0:8}${NC}"
+            echo -e "  ${BLUE}Changes to pyproject.toml will rebuild from layer 6${NC}"
+        fi
 
         # Create directories
         mkdir -p notebooks flowgraphs scripts data
 
-        # Create the override file
-        create_compose_override
-
-        # Build with specific image name and user's UID/GID
-        docker-compose -p ${COMPOSE_PROJECT} \
-            -f docker-compose.yml \
-            -f .docker-compose.override.yml \
-            build \
+        # Build with Docker
+        echo -e "${BLUE}Building with verification tests...${NC}"
+        docker build \
+            --tag ${IMAGE_NAME} \
             --build-arg USER_ID=${USER_ID} \
-            --build-arg GROUP_ID=${GROUP_ID}
+            --build-arg GROUP_ID=${GROUP_ID} \
+            -f Dockerfile \
+            .
 
-        # Clean up override
-        rm -f .docker-compose.override.yml
-
-        if image_exists; then
-            echo -e "${GREEN}âœ… Image built successfully: ${CYAN}${IMAGE_NAME}${NC}"
+        if [ $? -eq 0 ]; then
+            echo -e "${GREEN}✅ Build completed successfully${NC}"
+            echo -e "${GREEN}✅ All verification tests passed${NC}"
             echo -e "${GREEN}   UID/GID: ${USER_ID}/${GROUP_ID}${NC}"
         else
-            echo -e "${RED}âŒ Build failed${NC}"
+            echo -e "${RED}❌ Build failed verification${NC}"
+            echo -e "${RED}Check the test output above for details${NC}"
             exit 1
         fi
         ;;
@@ -178,18 +220,22 @@ case "$COMMAND" in
 
         # Check if image exists
         if ! image_exists; then
-            echo -e "${YELLOW}âš ï¸  Image ${CYAN}${IMAGE_NAME}${YELLOW} not found!${NC}"
+            echo -e "${YELLOW}⚠️  Image ${CYAN}${IMAGE_NAME}${YELLOW} not found!${NC}"
             echo -e "${YELLOW}   Run: ${CYAN}$0 build ${VARIANT}${NC}"
             exit 1
         fi
 
-        echo -e "${CYAN}ðŸš€ Starting GNU Radio Lab...${NC}"
+        echo -e "${CYAN}🚀 Starting GNU Radio Lab...${NC}"
 
         # Create directories if needed
-        mkdir -p notebooks flowgraphs scripts data
+        mkdir -p notebooks flowgraphs scripts data logs
 
         # Create the override file
         create_compose_override
+
+        # Set user/group IDs for runtime
+        export USER_ID=$(id -u)
+        export GROUP_ID=$(id -g)
 
         # Start container with specific project name
         docker-compose -p ${COMPOSE_PROJECT} -f docker-compose.yml -f .docker-compose.override.yml up -d
@@ -198,17 +244,18 @@ case "$COMMAND" in
         rm -f .docker-compose.override.yml
 
         # Wait for startup
-        echo -e "${YELLOW}â³ Waiting for Jupyter to start...${NC}"
+        echo -e "${YELLOW}⏳ Waiting for Jupyter to start...${NC}"
         sleep 5
 
         # Check if running
         if is_running; then
             echo ""
-            echo -e "${GREEN}âœ… GNU Radio Jupyter Lab is running!${NC}"
+            echo -e "${GREEN}✅ GNU Radio Jupyter Lab is running!${NC}"
             echo ""
-            echo -e "${BLUE}â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—${NC}"
-            echo -e "${BLUE}â•‘ ${GREEN}ðŸ“¡ GNU Radio ${CYAN}3.10.9.2${GREEN} + Jupyter Lab ${BLUE}â•‘${NC}"
-            echo -e "${BLUE}â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•${NC}"
+            echo -e "${BLUE}╔══════════════════════════════════════╗${NC}"
+            echo -e "${BLUE}║ ${GREEN}📡 GNU Radio ${CYAN}3.10.9.2${GREEN} + Jupyter Lab ${BLUE}║${NC}"
+            echo -e "${BLUE}║ ${YELLOW}📝 Template System Active${BLUE}            ║${NC}"
+            echo -e "${BLUE}╚══════════════════════════════════════╝${NC}"
             echo ""
             echo -e "${YELLOW}Access from this machine:${NC}"
             echo -e "  ${CYAN}http://localhost:${PORT}/lab?token=${TOKEN}${NC}"
@@ -221,18 +268,26 @@ case "$COMMAND" in
             if [ ! -z "$VARIANT" ]; then
                 echo -e "${MAGENTA}Variant: ${CYAN}${VARIANT}${NC}"
             fi
-            echo -e "${BLUE}â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•${NC}"
             echo ""
-            echo -e "${YELLOW}ðŸ“ Notebooks saved in: ${CYAN}./notebooks/${NC}"
+            echo -e "${BLUE}Template Info:${NC}"
+            echo -e "  ${YELLOW}• Base template loaded from Docker${NC}"
+            echo -e "  ${YELLOW}• Project config from pyproject.toml${NC}"
+            echo -e "  ${YELLOW}• New notebooks will use templates${NC}"
+            echo ""
+            echo -e "${BLUE}══════════════════════════════════════${NC}"
+            echo ""
+            echo -e "${YELLOW}📚 Notebooks saved in: ${CYAN}./notebooks/${NC}"
+            echo -e "${YELLOW}📊 Data files in: ${CYAN}./data/${NC}"
+            echo -e "${YELLOW}📝 Logs in: ${CYAN}./logs/${NC}"
         else
-            echo -e "${RED}âŒ Failed to start. Check logs:${NC}"
+            echo -e "${RED}❌ Failed to start. Check logs:${NC}"
             docker logs ${CONTAINER_NAME} --tail=50
         fi
         ;;
 
     stop|down)
         show_variant_info
-        echo -e "${YELLOW}ðŸ›‘ Stopping GNU Radio Lab...${NC}"
+        echo -e "${YELLOW}🛑 Stopping GNU Radio Lab...${NC}"
 
         # Create the override file
         create_compose_override
@@ -242,7 +297,7 @@ case "$COMMAND" in
         # Clean up override
         rm -f .docker-compose.override.yml
 
-        echo -e "${GREEN}âœ… Stopped${NC}"
+        echo -e "${GREEN}✅ Stopped${NC}"
         ;;
 
     restart)
@@ -253,24 +308,24 @@ case "$COMMAND" in
 
     logs)
         show_variant_info
-        echo -e "${YELLOW}ðŸ“‹ Showing logs (Ctrl+C to exit)...${NC}"
+        echo -e "${YELLOW}📋 Showing logs (Ctrl+C to exit)...${NC}"
         docker logs -f ${CONTAINER_NAME}
         ;;
 
     clean)
         show_variant_info
-        echo -e "${RED}ðŸ§¹ Cleaning Docker environment...${NC}"
+        echo -e "${RED}🧹 Cleaning Docker environment...${NC}"
         echo -e "${YELLOW}This will remove:${NC}"
         echo -e "  - Container: ${CYAN}${CONTAINER_NAME}${NC}"
         echo -e "  - Image: ${CYAN}${IMAGE_NAME}${NC}"
-        echo -e "${YELLOW}Your notebooks will be preserved.${NC}"
+        echo -e "${YELLOW}Your notebooks and data will be preserved.${NC}"
         read -p "Continue? (y/N) " -n 1 -r
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             docker stop ${CONTAINER_NAME} 2>/dev/null || true
             docker rm ${CONTAINER_NAME} 2>/dev/null || true
             docker rmi ${IMAGE_NAME} 2>/dev/null || true
-            echo -e "${GREEN}âœ… Cleaned${NC}"
+            echo -e "${GREEN}✅ Cleaned${NC}"
         else
             echo -e "${YELLOW}Cancelled${NC}"
         fi
@@ -278,10 +333,10 @@ case "$COMMAND" in
 
     status)
         show_variant_info
-        echo -e "${BLUE}â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•${NC}"
+        echo -e "${BLUE}══════════════════════════════════════${NC}"
         if is_running; then
-            echo -e "${GREEN}âœ… GNU Radio Lab is RUNNING${NC}"
-            echo -e "${BLUE}â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•${NC}"
+            echo -e "${GREEN}✅ GNU Radio Lab is RUNNING${NC}"
+            echo -e "${BLUE}══════════════════════════════════════${NC}"
             echo ""
             echo -e "${YELLOW}Local access:${NC}"
             echo -e "  ${CYAN}http://localhost:${PORT}/lab?token=${TOKEN}${NC}"
@@ -289,11 +344,14 @@ case "$COMMAND" in
             echo -e "${YELLOW}Network access:${NC}"
             echo -e "  ${CYAN}http://${IP}:${PORT}/lab?token=${TOKEN}${NC}"
             echo ""
+            echo -e "${YELLOW}Template System:${NC}"
+            echo -e "  ${GREEN}✅ Active - new notebooks will use templates${NC}"
+            echo ""
             # Show container stats
             docker stats --no-stream ${CONTAINER_NAME}
         else
-            echo -e "${RED}â—‹ GNU Radio Lab is STOPPED${NC}"
-            echo -e "${BLUE}â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•${NC}"
+            echo -e "${RED}▪ GNU Radio Lab is STOPPED${NC}"
+            echo -e "${BLUE}══════════════════════════════════════${NC}"
             if image_exists; then
                 echo -e "${GREEN}Image exists: ${CYAN}${IMAGE_NAME}${NC}"
                 echo -e "${YELLOW}Run '$0 start ${VARIANT}' to launch${NC}"
@@ -307,7 +365,7 @@ case "$COMMAND" in
     shell|bash)
         show_variant_info
         if is_running; then
-            echo -e "${YELLOW}ðŸ–¥ï¸  Opening shell in container...${NC}"
+            echo -e "${YELLOW}🖥️  Opening shell in container...${NC}"
             echo -e "${CYAN}Type 'exit' to return${NC}"
             docker exec -it ${CONTAINER_NAME} bash
         else
@@ -318,12 +376,41 @@ case "$COMMAND" in
     test)
         show_variant_info
         if is_running; then
-            echo -e "${YELLOW}ðŸ§ª Running GNU Radio test...${NC}"
+            echo -e "${YELLOW}🧪 Running GNU Radio test...${NC}"
             docker exec ${CONTAINER_NAME} python3 -c "
 import sys
 sys.path.append('/usr/lib/python3/dist-packages')
 from gnuradio import gr
-print(f'âœ… GNU Radio {gr.version()} is working!')
+print(f'✅ GNU Radio {gr.version()} is working!')
+
+# Test template system
+import json
+from pathlib import Path
+template_path = Path('/home/jovyan/.jupyter/templates/gnuradio_base_template.json')
+if template_path.exists():
+    with open(template_path) as f:
+        template = json.load(f)
+    print(f'✅ Template system configured with {len(template.get(\"cells\", []))} cells')
+else:
+    print('❌ Template system not found')
+"
+        else
+            echo -e "${RED}Container is not running. Start it first with '$0 start ${VARIANT}'${NC}"
+        fi
+        ;;
+
+    verify)
+        show_variant_info
+        if is_running; then
+            echo -e "${YELLOW}🔍 Running comprehensive verification...${NC}"
+            docker exec ${CONTAINER_NAME} /opt/venv/bin/python -c "
+import subprocess
+result = subprocess.run(['/opt/venv/bin/python', '/tmp/verify_build.py'], 
+                       capture_output=True, text=True)
+print(result.stdout)
+if result.returncode != 0:
+    print(result.stderr)
+    exit(1)
 "
         else
             echo -e "${RED}Container is not running. Start it first with '$0 start ${VARIANT}'${NC}"
@@ -331,9 +418,9 @@ print(f'âœ… GNU Radio {gr.version()} is working!')
         ;;
 
     list)
-        echo -e "${BLUE}â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—${NC}"
-        echo -e "${BLUE}â•‘     ${GREEN}GNU Radio Lab Variants${BLUE}             â•‘${NC}"
-        echo -e "${BLUE}â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•${NC}"
+        echo -e "${BLUE}╔══════════════════════════════════════╗${NC}"
+        echo -e "${BLUE}║     ${GREEN}GNU Radio Lab Variants${BLUE}          ║${NC}"
+        echo -e "${BLUE}╚══════════════════════════════════════╝${NC}"
         echo ""
         echo -e "${YELLOW}Images:${NC}"
         docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}" | grep "${BASE_NAME}" || echo "  None found"
@@ -346,9 +433,9 @@ print(f'âœ… GNU Radio {gr.version()} is working!')
         show_variant_info
         if image_exists; then
             EXPORT_NAME="${IMAGE_NAME}-$(date +%Y%m%d-%H%M%S).tar.gz"
-            echo -e "${YELLOW}ðŸ“¦ Exporting image to ${CYAN}${EXPORT_NAME}${NC}..."
+            echo -e "${YELLOW}📦 Exporting image to ${CYAN}${EXPORT_NAME}${NC}..."
             docker save ${IMAGE_NAME} | gzip > ${EXPORT_NAME}
-            echo -e "${GREEN}âœ… Exported successfully!${NC}"
+            echo -e "${GREEN}✅ Exported successfully!${NC}"
             echo -e "   Size: $(du -h ${EXPORT_NAME} | cut -f1)"
         else
             echo -e "${RED}Image not found: ${CYAN}${IMAGE_NAME}${NC}"
@@ -363,9 +450,9 @@ print(f'âœ… GNU Radio {gr.version()} is working!')
             exit 1
         fi
         if [ -f "$VARIANT" ]; then
-            echo -e "${YELLOW}ðŸ“¦ Importing image from ${CYAN}${VARIANT}${NC}..."
+            echo -e "${YELLOW}📦 Importing image from ${CYAN}${VARIANT}${NC}..."
             docker load < $VARIANT
-            echo -e "${GREEN}âœ… Import complete!${NC}"
+            echo -e "${GREEN}✅ Import complete!${NC}"
         else
             echo -e "${RED}File not found: ${CYAN}${VARIANT}${NC}"
         fi
@@ -373,15 +460,59 @@ print(f'âœ… GNU Radio {gr.version()} is working!')
 
     backup)
         BACKUP_NAME="gnuradio_backup_$(date +%Y%m%d_%H%M%S).tar.gz"
-        echo -e "${YELLOW}ðŸ’¾ Creating backup...${NC}"
-        tar -czf ${BACKUP_NAME} notebooks/ flowgraphs/ scripts/ data/ Dockerfile docker-compose.yml $0 2>/dev/null
-        echo -e "${GREEN}âœ… Backup saved as: ${CYAN}${BACKUP_NAME}${NC}"
+        echo -e "${YELLOW}💾 Creating backup...${NC}"
+        echo -e "${BLUE}Including template files and configuration...${NC}"
+        tar -czf ${BACKUP_NAME} \
+            notebooks/ \
+            flowgraphs/ \
+            scripts/ \
+            data/ \
+            Dockerfile \
+            docker-compose.yml \
+            pyproject.toml \
+            jupyter_notebook_config.py \
+            gnuradio_base_template.json \
+            verify_build.py \
+            $0 \
+            2>/dev/null
+        echo -e "${GREEN}✅ Backup saved as: ${CYAN}${BACKUP_NAME}${NC}"
+        ;;
+
+    template-info)
+        show_variant_info
+        echo -e "${BLUE}╔══════════════════════════════════════╗${NC}"
+        echo -e "${BLUE}║     ${YELLOW}Template System Information${BLUE}      ║${NC}"
+        echo -e "${BLUE}╚══════════════════════════════════════╝${NC}"
+        echo ""
+        echo -e "${YELLOW}Template Files:${NC}"
+        echo -e "  ${CYAN}gnuradio_base_template.json${NC} - Base template (Docker)"
+        echo -e "  ${CYAN}pyproject.toml${NC} - Project customization"
+        echo ""
+        echo -e "${YELLOW}How it works:${NC}"
+        echo -e "  1. Base template is baked into Docker image"
+        echo -e "  2. Project settings from pyproject.toml layer on top"
+        echo -e "  3. Every new notebook gets both templates applied"
+        echo ""
+        echo -e "${YELLOW}Customization:${NC}"
+        echo -e "  Edit ${CYAN}pyproject.toml${NC} [tool.jupyter] section"
+        echo -e "  Changes apply to new notebooks immediately"
+        echo -e "  No rebuild needed for template changes"
+        echo ""
+        if [ -f pyproject.toml ]; then
+            echo -e "${GREEN}✅ pyproject.toml found${NC}"
+            grep -q "\[tool.jupyter\]" pyproject.toml && \
+                echo -e "${GREEN}✅ Template configuration detected${NC}" || \
+                echo -e "${YELLOW}⚠️  No [tool.jupyter] section found${NC}"
+        else
+            echo -e "${RED}❌ pyproject.toml not found${NC}"
+        fi
         ;;
 
     help|--help|-h|*)
-        echo -e "${BLUE}â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—${NC}"
-        echo -e "${BLUE}â•‘  ${GREEN}GNU Radio Lab Management Script${BLUE}       â•‘${NC}"
-        echo -e "${BLUE}â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•${NC}"
+        echo -e "${BLUE}╔══════════════════════════════════════╗${NC}"
+        echo -e "${BLUE}║  ${GREEN}GNU Radio Lab Management Script${BLUE}     ║${NC}"
+        echo -e "${BLUE}║  ${YELLOW}Version 2.0 - With Templates${BLUE}        ║${NC}"
+        echo -e "${BLUE}╚══════════════════════════════════════╝${NC}"
         echo ""
         echo "Usage: $0 {command} [variant]"
         echo ""
@@ -392,34 +523,44 @@ print(f'âœ… GNU Radio {gr.version()} is working!')
         echo -e "  ${CYAN}<name>${NC}   - Any custom name (port 8888)"
         echo ""
         echo "Commands:"
-        echo -e "  ${CYAN}build [variant]${NC}  - Build image"
-        echo -e "  ${CYAN}rebuild [variant]${NC}- Rebuild from scratch (no cache)"
-        echo -e "  ${CYAN}start [variant]${NC}  - Start container"
-        echo -e "  ${CYAN}stop [variant]${NC}   - Stop container"
-        echo -e "  ${CYAN}restart [variant]${NC}- Restart container"
-        echo -e "  ${CYAN}status [variant]${NC} - Show status"
-        echo -e "  ${CYAN}logs [variant]${NC}   - Show live logs"
-        echo -e "  ${CYAN}shell [variant]${NC}  - Open bash shell"
-        echo -e "  ${CYAN}test [variant]${NC}   - Test GNU Radio"
-        echo -e "  ${CYAN}clean [variant]${NC}  - Remove container and image"
-        echo -e "  ${CYAN}list${NC}             - List all variants"
-        echo -e "  ${CYAN}export [variant]${NC} - Export image to tar.gz"
-        echo -e "  ${CYAN}import <file>${NC}    - Import image from tar.gz"
-        echo -e "  ${CYAN}backup${NC}           - Backup notebooks and config"
-        echo -e "  ${CYAN}help${NC}             - Show this help"
+        echo -e "  ${CYAN}build [variant]${NC}     - Build image with caching"
+        echo -e "  ${CYAN}rebuild [variant]${NC}   - Rebuild from scratch (no cache)"
+        echo -e "  ${CYAN}start [variant]${NC}     - Start container"
+        echo -e "  ${CYAN}stop [variant]${NC}      - Stop container"
+        echo -e "  ${CYAN}restart [variant]${NC}   - Restart container"
+        echo -e "  ${CYAN}status [variant]${NC}    - Show status"
+        echo -e "  ${CYAN}logs [variant]${NC}      - Show live logs"
+        echo -e "  ${CYAN}shell [variant]${NC}     - Open bash shell"
+        echo -e "  ${CYAN}test [variant]${NC}      - Test GNU Radio & templates"
+        echo -e "  ${CYAN}verify [variant]${NC}    - Run verification tests"
+        echo -e "  ${CYAN}clean [variant]${NC}     - Remove container and image"
+        echo -e "  ${CYAN}list${NC}                - List all variants"
+        echo -e "  ${CYAN}export [variant]${NC}    - Export image to tar.gz"
+        echo -e "  ${CYAN}import <file>${NC}       - Import image from tar.gz"
+        echo -e "  ${CYAN}backup${NC}              - Backup all files and data"
+        echo -e "  ${CYAN}template-info${NC}       - Show template system info"
+        echo -e "  ${CYAN}help${NC}                - Show this help"
         echo ""
-        echo -e "${BLUE}â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•${NC}"
+        echo -e "${BLUE}══════════════════════════════════════${NC}"
         echo "Examples:"
-        echo -e "  ${GREEN}$0 build dev${NC}     # Build development version"
-        echo -e "  ${GREEN}$0 start dev${NC}     # Start development version"
-        echo -e "  ${GREEN}$0 start${NC}         # Start default version"
-        echo -e "  ${GREEN}$0 list${NC}          # See all versions"
+        echo -e "  ${GREEN}$0 build dev${NC}        # Build development version"
+        echo -e "  ${GREEN}$0 start dev${NC}        # Start development version"
+        echo -e "  ${GREEN}$0 template-info${NC}    # Check template setup"
+        echo -e "  ${GREEN}$0 verify dev${NC}       # Verify the build"
         echo ""
 
         # Show current status
-        echo -e "${BLUE}â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•${NC}"
+        echo -e "${BLUE}══════════════════════════════════════${NC}"
         echo -e "${YELLOW}Available variants:${NC}"
         docker images --format "  {{.Repository}}" | grep "^${BASE_NAME}" | sed "s/^${BASE_NAME}$/  ${BASE_NAME} (default)/" | sed "s/^${BASE_NAME}-/  /" || echo "  None built yet"
+        
+        # Check for template files
+        echo ""
+        echo -e "${YELLOW}Template files status:${NC}"
+        [ -f "gnuradio_base_template.json" ] && echo -e "  ${GREEN}✅ Base template${NC}" || echo -e "  ${RED}❌ Base template missing${NC}"
+        [ -f "jupyter_notebook_config.py" ] && echo -e "  ${GREEN}✅ Jupyter config${NC}" || echo -e "  ${RED}❌ Jupyter config missing${NC}"
+        [ -f "pyproject.toml" ] && echo -e "  ${GREEN}✅ Project config${NC}" || echo -e "  ${RED}❌ Project config missing${NC}"
+        [ -f "verify_build.py" ] && echo -e "  ${GREEN}✅ Verification script${NC}" || echo -e "  ${RED}❌ Verification script missing${NC}"
         ;;
 esac
 

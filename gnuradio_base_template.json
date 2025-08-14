@@ -1,0 +1,277 @@
+{
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "tags": ["base_template", "gnuradio_header"]
+      },
+      "source": [
+        "# GNU Radio Notebook\n",
+        "\n",
+        "This notebook is running in a Docker container with GNU Radio 3.10.9.2 pre-configured.\n",
+        "\n",
+        "## Environment Architecture\n",
+        "\n",
+        "- **System Python**: Contains GNU Radio and system packages (via apt)\n",
+        "- **Virtual Environment** (`/opt/venv`): Contains Jupyter and Python packages\n",
+        "- **Bridge**: The cell below creates a bridge to access GNU Radio from the venv\n",
+        "\n",
+        "### ⚠️ Important Constraints\n",
+        "\n",
+        "1. **NumPy Version**: GNU Radio requires NumPy 1.x (currently using <2.0)\n",
+        "2. **Package Installation**: Use `!pip install` (no `--user` needed) or `!uv pip install` for speed\n",
+        "3. **pyzmq Isolation**: Never mix system and venv pyzmq packages"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": null,
+      "metadata": {
+        "tags": ["base_template", "gnuradio_bridge"]
+      },
+      "outputs": [],
+      "source": [
+        "# GNU Radio Bridge Setup\n",
+        "# This cell establishes the connection between the venv and system GNU Radio\n",
+        "\n",
+        "import sys\n",
+        "import os\n",
+        "import warnings\n",
+        "\n",
+        "# Suppress common warnings\n",
+        "warnings.filterwarnings('ignore', category=DeprecationWarning)\n",
+        "warnings.filterwarnings('ignore', message='pkg_resources is deprecated')\n",
+        "\n",
+        "# Add GNU Radio to Python path\n",
+        "gnuradio_path = '/usr/lib/python3/dist-packages'\n",
+        "if gnuradio_path not in sys.path:\n",
+        "    sys.path.append(gnuradio_path)\n",
+        "    print(\"🔗 GNU Radio bridge established\")\n",
+        "\n",
+        "# Import and verify GNU Radio\n",
+        "try:\n",
+        "    from gnuradio import gr\n",
+        "    from gnuradio import blocks\n",
+        "    from gnuradio import analog\n",
+        "    from gnuradio import filter as gr_filter\n",
+        "    from gnuradio import fft\n",
+        "    from gnuradio.filter import firdes\n",
+        "    \n",
+        "    print(f\"✅ GNU Radio {gr.version()} loaded successfully\")\n",
+        "    print(f\"📍 GNU Radio prefix: {gr.prefix()}\")\n",
+        "    \n",
+        "except ImportError as e:\n",
+        "    print(f\"❌ GNU Radio import failed: {e}\")\n",
+        "    print(\"Try restarting the kernel or rebuilding the container\")"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": null,
+      "metadata": {
+        "tags": ["base_template", "standard_imports"]
+      },
+      "outputs": [],
+      "source": [
+        "# Standard Scientific Python Imports\n",
+        "import numpy as np\n",
+        "import matplotlib.pyplot as plt\n",
+        "from datetime import datetime\n",
+        "from pathlib import Path\n",
+        "\n",
+        "# Display settings\n",
+        "plt.style.use('default')\n",
+        "%matplotlib inline\n",
+        "\n",
+        "# Verify NumPy version (must be 1.x for GNU Radio)\n",
+        "print(f\"NumPy version: {np.__version__}\")\n",
+        "assert int(np.__version__.split('.')[0]) == 1, \"NumPy 2.x detected! GNU Radio requires NumPy 1.x\"\n",
+        "\n",
+        "# Set up paths\n",
+        "DATA_PATH = Path('/home/jovyan/data')\n",
+        "FLOWGRAPH_PATH = Path('/home/jovyan/flowgraphs')\n",
+        "NOTEBOOK_PATH = Path('/home/jovyan/notebooks')\n",
+        "\n",
+        "# Create directories if they don't exist\n",
+        "for path in [DATA_PATH, FLOWGRAPH_PATH, NOTEBOOK_PATH]:\n",
+        "    path.mkdir(parents=True, exist_ok=True)\n",
+        "\n",
+        "print(f\"📁 Working directories ready\")"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "tags": ["base_template", "quickstart"]
+      },
+      "source": [
+        "## Quick Start Examples\n",
+        "\n",
+        "### Simple GNU Radio Test"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": null,
+      "metadata": {
+        "tags": ["base_template", "example"]
+      },
+      "outputs": [],
+      "source": [
+        "# Simple GNU Radio flowgraph test\n",
+        "def test_gnuradio():\n",
+        "    \"\"\"Create a simple flowgraph to verify GNU Radio is working\"\"\"\n",
+        "    \n",
+        "    # Create top block\n",
+        "    tb = gr.top_block()\n",
+        "    \n",
+        "    # Create blocks\n",
+        "    sample_rate = 32000\n",
+        "    frequency = 1000\n",
+        "    amplitude = 1\n",
+        "    \n",
+        "    src = analog.sig_source_c(sample_rate, analog.GR_COS_WAVE, frequency, amplitude, 0)\n",
+        "    head = blocks.head(gr.sizeof_gr_complex, 1000)\n",
+        "    sink = blocks.vector_sink_c()\n",
+        "    \n",
+        "    # Connect blocks\n",
+        "    tb.connect(src, head, sink)\n",
+        "    \n",
+        "    # Run flowgraph\n",
+        "    tb.run()\n",
+        "    \n",
+        "    # Get data\n",
+        "    data = sink.data()\n",
+        "    \n",
+        "    return data\n",
+        "\n",
+        "# Run test\n",
+        "test_data = test_gnuradio()\n",
+        "print(f\"✅ Generated {len(test_data)} complex samples\")\n",
+        "\n",
+        "# Plot first 100 samples\n",
+        "plt.figure(figsize=(12, 5))\n",
+        "\n",
+        "plt.subplot(1, 2, 1)\n",
+        "plt.plot(np.real(test_data[:100]), label='Real', linewidth=2)\n",
+        "plt.plot(np.imag(test_data[:100]), label='Imag', linewidth=2)\n",
+        "plt.title('Time Domain')\n",
+        "plt.xlabel('Sample')\n",
+        "plt.ylabel('Amplitude')\n",
+        "plt.legend()\n",
+        "plt.grid(True, alpha=0.3)\n",
+        "\n",
+        "plt.subplot(1, 2, 2)\n",
+        "plt.plot(np.abs(test_data[:100]), label='Magnitude', linewidth=2, color='green')\n",
+        "plt.title('Magnitude')\n",
+        "plt.xlabel('Sample')\n",
+        "plt.ylabel('|Amplitude|')\n",
+        "plt.legend()\n",
+        "plt.grid(True, alpha=0.3)\n",
+        "\n",
+        "plt.tight_layout()\n",
+        "plt.show()"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "tags": ["base_template", "helpers"]
+      },
+      "source": [
+        "## Helper Functions\n",
+        "\n",
+        "Common DSP and GNU Radio utilities"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "execution_count": null,
+      "metadata": {
+        "tags": ["base_template", "helpers"]
+      },
+      "outputs": [],
+      "source": [
+        "# Common DSP Helper Functions\n",
+        "\n",
+        "def create_flowgraph():\n",
+        "    \"\"\"Create a basic flowgraph template\"\"\"\n",
+        "    return gr.top_block()\n",
+        "\n",
+        "def plot_complex_signal(signal, title=\"Complex Signal\", max_samples=1000):\n",
+        "    \"\"\"Plot complex signal in time domain\"\"\"\n",
+        "    samples_to_plot = min(len(signal), max_samples)\n",
+        "    \n",
+        "    fig, axes = plt.subplots(2, 1, figsize=(12, 6))\n",
+        "    \n",
+        "    axes[0].plot(np.real(signal[:samples_to_plot]), label='Real')\n",
+        "    axes[0].plot(np.imag(signal[:samples_to_plot]), label='Imag')\n",
+        "    axes[0].set_title(f\"{title} - I/Q Components\")\n",
+        "    axes[0].set_xlabel('Sample')\n",
+        "    axes[0].set_ylabel('Amplitude')\n",
+        "    axes[0].legend()\n",
+        "    axes[0].grid(True, alpha=0.3)\n",
+        "    \n",
+        "    axes[1].plot(np.abs(signal[:samples_to_plot]), color='green')\n",
+        "    axes[1].set_title('Magnitude')\n",
+        "    axes[1].set_xlabel('Sample')\n",
+        "    axes[1].set_ylabel('|Amplitude|')\n",
+        "    axes[1].grid(True, alpha=0.3)\n",
+        "    \n",
+        "    plt.tight_layout()\n",
+        "    plt.show()\n",
+        "\n",
+        "def compute_psd(signal, fs, nperseg=1024):\n",
+        "    \"\"\"Compute Power Spectral Density\"\"\"\n",
+        "    from scipy import signal as sp_signal\n",
+        "    f, psd = sp_signal.welch(signal, fs=fs, nperseg=nperseg)\n",
+        "    return f, 10 * np.log10(psd + 1e-10)  # Add small value to avoid log(0)\n",
+        "\n",
+        "print(\"🛠️ Helper functions loaded\")"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "tags": ["base_template", "workspace"]
+      },
+      "source": [
+        "---\n",
+        "\n",
+        "## Your Work Starts Here\n",
+        "\n",
+        "This section is for your project-specific code.\n",
+        "\n",
+        "---\n",
+        "\n",
+        "*This notebook was created with the GNU Radio Docker template system.*\n",
+        "\n",
+        "*Template version: 1.0.0*\n",
+        "*Created: `{datetime.now().isoformat()}`*"
+      ]
+    }
+  ],
+  "metadata": {
+    "kernelspec": {
+      "display_name": "Python 3 (GNU Radio)",
+      "language": "python",
+      "name": "python3"
+    },
+    "language_info": {
+      "codemirror_mode": {
+        "name": "ipython",
+        "version": 3
+      },
+      "file_extension": ".py",
+      "mimetype": "text/x-python",
+      "name": "python",
+      "nbconvert_exporter": "python",
+      "pygments_lexer": "ipython3",
+      "version": "3.12.3"
+    },
+    "gnuradio_version": "3.10.9.2",
+    "template_version": "1.0.0"
+  },
+  "nbformat": 4,
+  "nbformat_minor": 5
+}
