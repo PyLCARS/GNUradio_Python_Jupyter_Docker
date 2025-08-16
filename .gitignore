@@ -76,3 +76,6 @@ grc_generated/
 
 # Export files (too large for git)
 gnuradio-notebook-*.tar.gz
+
+# Claude Code configuration (local AI assistance)
+CLAUDE.md
