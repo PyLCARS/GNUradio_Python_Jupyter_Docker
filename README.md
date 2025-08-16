@@ -1,6 +1,6 @@
 # GNU Radio Jupyter Docker Environment
 
-A sophisticated Docker environment that seamlessly integrates GNU Radio with JupyterLab, solving complex compatibility challenges through virtual environment isolation and providing an automatic notebook template system for rapid SDR development.
+This is a Docker environment that seamlessly integrates GNU Radio with JupyterLab, by dealing with the complex compatibility challenges through virtual environment isolation and providing an automatic notebook template system for rapid SDR development.
 
 ## 🎯 Key Challenges Solved
 
@@ -10,7 +10,7 @@ GNU Radio (from Ubuntu packages) and Jupyter (from pip) have fundamentally incom
 - **NumPy version lock**: GNU Radio is compiled against NumPy 1.x, incompatible with NumPy 2.x
 - **Python path isolation**: System packages vs. virtual environment packages need careful bridging
 
-### Our Solution Architecture
+### Integration Solution Architecture
 ```
 System Python (/usr/bin/python3)
 ├── GNU Radio 3.10.9.2 (apt packages)
@@ -42,12 +42,40 @@ http://localhost:8888/lab?token=docker
 
 **Every new notebook automatically includes GNU Radio setup!** No manual configuration needed.
 
+## 🚀 Future Roadmap
+
+**Coming Soon:**
+- **Hardware Support**: RTL-SDR, HackRF, USRP device passthrough
+- **GNU Radio from Source**: Rebuild to remove NumPy 1.x restrictions
+- **OOT Modules**: gr-satellites, gr-inspector, and more
+- **Educational Platform**: 
+  - Interactive API documentation as notebooks
+  - Coherent systems examples from textbooks
+  - Specialized constellation/communications plotting tools
+- **Extended Libraries**: CommPy, scikit-rf, pyadi-iio for complete SDR toolkit
+
 ## 📋 Prerequisites
 
 - Docker installed and running
 - Linux host (tested on Ubuntu)
 - ~4GB disk space for Docker image
 - Port 8888 available (or script will find another)
+
+## 📊 Comparison with Other Solutions
+
+| Solution | Has Jupyter? | GNU Radio Works? | Conflict Resolution | Auto Templates | Container-ized | Size |
+|----------|-------------|------------------|-------------------|----------------|----------------|------|
+| **This Project** | ✅ Full JupyterLab | ✅ Via bridge | ✅ Elegant venv isolation | ✅ Yes! | ✅ Docker | ~3.5GB |
+| **GNU Radio Docker** | ❌ No | ✅ Yes | N/A | ❌ No | ✅ Docker | ~2GB |
+| **Radioconda** | ✅ Yes | ✅ Yes | ⚠️ Conda magic | ❌ No | ❌ Conda env | ~6GB+ |
+| **Arch AUR** | ❌ User problem | ✅ Yes | ❌ System conflicts | ❌ No | ❌ System pkg | Varies |
+
+**Unique Features of This Solution:**
+- **solution** that properly integrates Jupyter + GNU Radio without Conda
+- **Automatic notebook templates** with GNU Radio setup (unique feature)
+- **Build verification** ensures working images
+- **Multiple variants** support (dev/test/prod)
+- **Optimized layer caching** for fast rebuilds (~2 min for dependency changes)
 
 ## 🏗️ Technical Architecture
 
@@ -211,11 +239,19 @@ code_cells = [
    - Solution: Always run from local filesystem
    - Error: `mkdir /path: file exists`
 
-2. **Port Conflicts**
-   - Script automatically finds next available port
+2. **Port Conflicts with Running Services**
+   - **Issue**: Cannot start if VM or other Jupyter instance is using ports
+   - **Behavior**: Script automatically finds next available port, but may still conflict
+   - **Solution**: Stop conflicting services or manually specify different port
    - Default ports: default=8888, dev=8889, test=8890
+   - Manual port override: `./gnuradio_jupyter_docker_manager.sh start default 9000`
 
-3. **Management Script Has Duplicate Functions**
+3. **Limited Testing Environment**
+   - **Tested only on**: Kubuntu 24.04 LTS
+   - **Not tested on**: Other Linux distributions, macOS, Windows (WSL)
+   - **VM conflicts**: Issues reported when running alongside VirtualBox VMs using same ports
+
+4. **Management Script Has Duplicate Functions**
    - The bash script has some duplicate function definitions
    - Doesn't affect functionality but should be cleaned up
 
@@ -348,19 +384,23 @@ docker-compose build --build-arg USER_ID=$(id -u) --build-arg GROUP_ID=$(id -g)
 - **JupyterLab**: 4.x
 - **Docker Compose**: 3.8
 
+## 🧪 Testing Status
+
+**Verified Environment:**
+- **Host OS**: Kubuntu 24.04 LTS
+- **Docker**: 20.10+
+- **Architecture**: x86_64
+
+**Known Limitations:**
+- Only tested on Kubuntu 24.04 - compatibility with other distributions not verified
+- Port conflicts with VMs and existing Jupyter instances require manual resolution
+- SSHFS mount directories are not supported
+
 ## 📄 License
 
 MIT License (or your chosen license)
 
 ## 🙏 Acknowledgments
 
-This project solves the notorious GNU Radio + Jupyter integration challenge that has plagued the SDR community. The solution required careful handling of:
-- Incompatible dependency versions
-- Python environment isolation
-- System vs. pip package conflicts
-- Docker layer optimization
-- Automatic notebook configuration
+This project was developed with significant technical assistance from Claude 4.1 Opus, which helped architect the virtual environment isolation strategy, resolve complex dependency conflicts, and implement the automatic notebook template system.
 
----
-
-**For detailed development instructions, see [CLAUDE.md](CLAUDE.md)**
