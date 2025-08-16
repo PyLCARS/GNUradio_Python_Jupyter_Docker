@@ -1,54 +1,64 @@
-# Git
-.git
-.gitignore
-
-# Docker
+# Docker files
 .dockerignore
-docker-compose.yml
-docker-compose.*.yml
+Dockerfile.*
+docker-compose*.yml
 .docker-compose.override.yml
 
-# Notebooks and data (don't copy into image, use volumes)
-notebooks/
-flowgraphs/
-scripts/
-data/
+# Git files
+.git
+.gitignore
+.github
+*.md
 
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
+# Python cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
 .Python
-*.egg-info/
-.ipynb_checkpoints/
+*.egg-info
+.pytest_cache
+.mypy_cache
+.ruff_cache
 
-# IDE
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE files
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+.DS_Store
 
-# Documentation
-*.md
-docs/
-
-# Backups and exports
-*.tar.gz
-*.tar
-*.zip
-*.bak
-
-# Logs
-*.log
+# Project data (mounted as volumes)
+notebooks/
+data/
+flowgraphs/
+scripts/
 logs/
 
-# OS
-.DS_Store
-Thumbs.db
+# Backup files
+*.backup
+*.bak
+*.tar.gz
+gnuradio_backup_*
 
-# Keep requirements files (they're needed for build)
-!requirements.txt
-!requirements*.txt
-!pyproject.toml
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Build artifacts (except what we need)
+build/
+dist/
+*.tar
+*.zip
+
+# Keep only essential files for build context
+!docker/
+!config/pyproject.toml

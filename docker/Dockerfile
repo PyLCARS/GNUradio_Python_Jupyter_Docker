@@ -2,7 +2,7 @@ FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Build args for UID/GID
+# Build arguments for UID/GID mapping
 ARG USER_ID=1001
 ARG GROUP_ID=1001
 
@@ -15,24 +15,23 @@ RUN apt-get update && apt-get install -y \
     gnuradio \
     gnuradio-dev \
     curl \
-    && rm -rf /var/lib/apt/lists/*
+    git \
+    vim-tiny \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # ============================================
-# LAYER 2: Virtual environment setup (stable)
+# LAYER 2: Python virtual environment
 # ============================================
-RUN python3 -m venv /opt/venv
-
-# Upgrade pip and install build tools
-RUN /opt/venv/bin/pip install --no-cache-dir --upgrade pip setuptools wheel
+RUN python3 -m venv /opt/venv && \
+    /opt/venv/bin/pip install --no-cache-dir --upgrade pip setuptools wheel
 
 # ============================================
-# LAYER 3: Core dependencies (semi-stable)
+# LAYER 3: Core Python dependencies
 # ============================================
-# Critical: NumPy 1.x for GNU Radio
-RUN /opt/venv/bin/pip install --no-cache-dir 'numpy>=1.24,<2.0'
-
-# Core packages that rarely change
+# Critical: NumPy 1.x required for GNU Radio compatibility
 RUN /opt/venv/bin/pip install --no-cache-dir \
+    'numpy>=1.24,<2.0' \
     jupyterlab \
     notebook \
     ipykernel \
@@ -42,24 +41,23 @@ RUN /opt/venv/bin/pip install --no-cache-dir \
     loguru
 
 # ============================================
-# LAYER 4: User setup (stable)
+# LAYER 4: User setup
 # ============================================
 RUN groupadd -o -g ${GROUP_ID} jovyan && \
     useradd -o -m -s /bin/bash -u ${USER_ID} -g jovyan jovyan
 
-# Create directory structure
-RUN mkdir -p /home/jovyan/notebooks \
-             /home/jovyan/flowgraphs \
-             /home/jovyan/scripts \
-             /home/jovyan/data \
+# Create directory structure with proper permissions
+RUN mkdir -p /home/jovyan/{notebooks,flowgraphs,scripts,data} \
              /home/jovyan/.local/bin \
              /home/jovyan/.gnuradio/prefs \
              /home/jovyan/.jupyter/templates \
-             /home/jovyan/.ipython/profile_default/startup
+             /home/jovyan/.ipython/profile_default/startup && \
+    chown -R jovyan:jovyan /home/jovyan
 
-# GNU Radio config
+# Configure GNU Radio for container environment
 RUN echo "vmcircbuf_default_factory = gr_vmcircbuf_sysv_shm_factory" > \
-    /home/jovyan/.gnuradio/prefs/vmcircbuf_default_factory
+    /home/jovyan/.gnuradio/prefs/vmcircbuf_default_factory && \
+    chown jovyan:jovyan /home/jovyan/.gnuradio/prefs/vmcircbuf_default_factory
 
 # Also create config for root (used during build verification)
 RUN mkdir -p /root/.gnuradio/prefs && \
@@ -67,16 +65,12 @@ RUN mkdir -p /root/.gnuradio/prefs && \
     /root/.gnuradio/prefs/vmcircbuf_default_factory
 
 # ============================================
-# LAYER 5: Template system (semi-stable)
+# LAYER 5: Template system setup
 # ============================================
-# Ensure template directories exist before copying
-RUN mkdir -p /home/jovyan/.jupyter/templates
+COPY --chown=jovyan:jovyan docker/jupyter_template_system_config.py /home/jovyan/.jupyter/
+COPY --chown=jovyan:jovyan docker/templates/gnuradio_notebook_starter_template.json /home/jovyan/.jupyter/templates/
 
-# Copy template system files (will fix ownership later)
-COPY jupyter_notebook_config.py /home/jovyan/.jupyter/
-COPY gnuradio_base_template.json /home/jovyan/.jupyter/templates/
-
-# IPython startup for GNU Radio bridge
+# IPython startup script for GNU Radio bridge
 RUN echo 'import sys\n\
 import os\n\
 import warnings\n\
@@ -90,65 +84,61 @@ try:\n\
     from gnuradio import gr\n\
     print(f"✓ GNU Radio {gr.version()} ready")\n\
 except ImportError as e:\n\
-    print(f"⚠️ GNU Radio issue: {e}")' \
-    > /home/jovyan/.ipython/profile_default/startup/00-gnuradio-bridge.py
+    print(f"⚠ GNU Radio issue: {e}")' \
+    > /home/jovyan/.ipython/profile_default/startup/00-gnuradio-bridge.py && \
+    chown jovyan:jovyan /home/jovyan/.ipython/profile_default/startup/00-gnuradio-bridge.py
 
 # ============================================
-# LAYER 6: Project dependencies (changes frequently)
-# This layer rebuilds when pyproject.toml changes
+# LAYER 6: Project dependencies
 # ============================================
-COPY pyproject.toml /tmp/pyproject.toml
-
-# Install from pyproject.toml
+COPY config/pyproject.toml /tmp/pyproject.toml
 RUN cd /tmp && \
     /opt/venv/bin/pip install --no-cache-dir -e . && \
     rm -rf /tmp/*
 
 # ============================================
-# LAYER 7: Jupyter Kernel Setup
+# LAYER 7: Jupyter kernel setup
 # ============================================
-# Create Jupyter kernel with GNU Radio name
 RUN /opt/venv/bin/python -m ipykernel install \
     --name 'python3' \
     --display-name 'Python 3 (GNU Radio)' \
-    --prefix /opt/venv
+    --prefix /opt/venv && \
+    chown -R jovyan:jovyan /opt/venv
 
 # ============================================
-# LAYER 8: Fix Ownership
+# LAYER 8: Build verification
 # ============================================
-# Set ownership of everything before verification
-RUN chown -R jovyan:jovyan /home/jovyan /opt/venv
-
-# ============================================
-# LAYER 9: Verification (always runs)
-# ============================================
-# Copy verification script with correct ownership
-COPY --chown=jovyan:jovyan verify_build.py /tmp/verify_build.py
-
-# Run comprehensive verification (fails build if tests fail)
+COPY --chown=jovyan:jovyan docker/docker_build_verification_tests.py /tmp/docker_build_verification_tests.py
 RUN cd /tmp && \
-    /opt/venv/bin/python verify_build.py && \
-    rm /tmp/verify_build.py
+    /opt/venv/bin/python docker_build_verification_tests.py && \
+    rm /tmp/docker_build_verification_tests.py
 
 # ============================================
-# LAYER 10: Runtime configuration
+# LAYER 9: Final configuration
 # ============================================
 USER jovyan
 WORKDIR /home/jovyan
 
-ENV PYTHONUSERBASE=/home/jovyan/.local
-ENV PATH="/home/jovyan/.local/bin:/opt/venv/bin:${PATH}"
-ENV JUPYTER_PATH=/opt/venv/share/jupyter
-ENV JUPYTER_RUNTIME_DIR=/home/jovyan/.local/share/jupyter/runtime
-ENV JUPYTER_DATA_DIR=/home/jovyan/.local/share/jupyter
+# Environment variables
+ENV PYTHONUSERBASE=/home/jovyan/.local \
+    PATH="/home/jovyan/.local/bin:/opt/venv/bin:${PATH}" \
+    JUPYTER_PATH=/opt/venv/share/jupyter \
+    JUPYTER_RUNTIME_DIR=/home/jovyan/.local/share/jupyter/runtime \
+    JUPYTER_DATA_DIR=/home/jovyan/.local/share/jupyter
 
+# Jupyter port
 EXPOSE 8888
 
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD /opt/venv/bin/jupyter lab list || exit 1
+
+# Default command
 CMD ["/opt/venv/bin/jupyter", "lab", \
      "--ip=0.0.0.0", \
      "--port=8888", \
      "--no-browser", \
-     "--config=/home/jovyan/.jupyter/jupyter_notebook_config.py", \
+     "--config=/home/jovyan/.jupyter/jupyter_template_system_config.py", \
      "--ServerApp.token=docker", \
      "--ServerApp.password=", \
      "--ServerApp.allow_origin=*", \

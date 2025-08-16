@@ -111,12 +111,12 @@ def test_template_system():
     """Verify template system is properly configured"""
     try:
         # Check if config file exists
-        config_path = Path("/home/jovyan/.jupyter/jupyter_notebook_config.py")
+        config_path = Path("/home/jovyan/.jupyter/jupyter_template_system_config.py")
         if not config_path.exists():
             return print_test("Template config", False, "Config file not found")
         
         # Check if base template exists
-        template_path = Path("/home/jovyan/.jupyter/templates/gnuradio_base_template.json")
+        template_path = Path("/home/jovyan/.jupyter/templates/gnuradio_notebook_starter_template.json")
         if not template_path.exists():
             return print_test("Base template", False, "Template file not found")
         

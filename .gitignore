@@ -1,14 +1,14 @@
-# Temporary Docker Compose override files
-.docker-compose.override.yml
+# User data directories (created at runtime)
+notebooks/*.ipynb
+data/*
+flowgraphs/*.grc
+logs/
 
-# Exported Docker images
-*.tar.gz
-
-# Jupyter
-.ipynb_checkpoints/
-*.ipynb_checkpoints
-.jupyter/
-.local/
+# Keep directory structure with .gitkeep
+!notebooks/.gitkeep
+!data/.gitkeep
+!flowgraphs/.gitkeep
+!scripts/.gitkeep
 
 # Python
 __pycache__/
@@ -17,13 +17,25 @@ __pycache__/
 *.so
 .Python
 *.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
-# Optional: Uncomment if you want to ignore requirements files
-# requirements.txt
-# pyproject.toml
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
 
-# Data files (uncomment if you don't want to track data)
-# data/
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+.jupyter/
+!docker/jupyter_notebook_config.py
 
 # IDE
 .vscode/
@@ -31,19 +43,36 @@ __pycache__/
 *.swp
 *.swo
 *~
-
-# OS
 .DS_Store
 Thumbs.db
 
-# Logs
+# Docker
+.docker-compose.override.yml
+*.tar
+*.tar.gz
+
+# Backup files
+*.backup
+*.bak
+gnuradio_backup_*
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
 *.log
-logs/
 
-# GNU Radio temporary files
-*.grc.bak
-*.grc~
+# Compiled files
+*.o
+*.a
+*.la
+*.lo
+*.lai
 
-# Local environment
-.env
-.env.local
+# GNU Radio specific
+*.pyc.grc
+grc_generated/
+
+# Export files (too large for git)
+gnuradio-notebook-*.tar.gz

@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  jupyter:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        USER_ID: ${USER_ID:-1001}
+        GROUP_ID: ${GROUP_ID:-1001}
+    
+    image: ${IMAGE_NAME:-gnuradio-notebook}
+    container_name: ${CONTAINER_NAME:-gnuradio-notebook}
+    
+    volumes:
+      # User data directories (persistent)
+      - ../notebooks:/home/jovyan/notebooks
+      - ../flowgraphs:/home/jovyan/flowgraphs
+      - ../scripts:/home/jovyan/scripts
+      - ../data:/home/jovyan/data
+      
+      # Optional: Runtime configuration
+      # - ../config/pyproject.toml:/home/jovyan/pyproject.toml:ro
+    
+    environment:
+      # Locale
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+      
+      # Jupyter
+      - JUPYTER_ENABLE_LAB=yes
+      - JUPYTER_TOKEN=${JUPYTER_TOKEN:-docker}
+      
+      # GNU Radio
+      - GNURADIO_ENV=1
+      
+      # Development/debug
+      - JUPYTER_TEMPLATE_DEBUG=${DEBUG:-false}
+      - VARIANT=${VARIANT:-default}
+    
+    ports:
+      - "${HOST_PORT:-8888}:8888"
+    
+    restart: unless-stopped
+    
+    # Resource limits (optional, adjust as needed)
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '4'
+    #       memory: 8G
+    #     reservations:
+    #       cpus: '2'
+    #       memory: 4G
+    
+    # Network
+    networks:
+      - gnuradio-net
+
+networks:
+  gnuradio-net:
+    driver: bridge

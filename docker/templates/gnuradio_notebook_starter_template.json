@@ -246,8 +246,7 @@
         "\n",
         "*This notebook was created with the GNU Radio Docker template system.*\n",
         "\n",
-        "*Template version: 1.0.0*\n",
-        "*Created: `{datetime.now().isoformat()}`*"
+        "*Template version: 1.0.0*"
       ]
     }
   ],

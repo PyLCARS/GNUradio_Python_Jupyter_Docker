@@ -43,7 +43,7 @@ class GNURadioTemplateManager(LargeFileManager):
         model = super().new_untitled(path=path, type=type, ext=ext)
         
         # Load our template
-        template_path = Path('/home/jovyan/.jupyter/templates/gnuradio_base_template.json')
+        template_path = Path('/home/jovyan/.jupyter/templates/gnuradio_notebook_starter_template.json')
         
         if template_path.exists():
             try:

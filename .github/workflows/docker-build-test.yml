@@ -1,0 +1,31 @@
+name: Docker Build and Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Build Docker image
+      run: |
+        chmod +x ./gnuradio_jupyter_docker_manager.sh
+        ./gnuradio_jupyter_docker_manager.sh build
+        
+    - name: Run verification tests
+      run: |
+        ./gnuradio_jupyter_docker_manager.sh verify
+        
+    - name: Test GNU Radio functionality
+      run: |
+        ./gnuradio_jupyter_docker_manager.sh test
