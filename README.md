@@ -56,10 +56,39 @@ http://localhost:8888/lab?token=docker
 
 ## 📋 Prerequisites
 
-- Docker installed and running
+### System Requirements
 - Linux host (tested on Ubuntu)
 - ~4GB disk space for Docker image
 - Port 8888 available (or script will find another)
+
+### Required System Packages
+Before building the Docker image, install the following:
+```bash
+sudo apt update
+sudo apt install python3-setuptools
+```
+
+### Docker Setup
+Install Docker from Ubuntu repos (simpler for offline/local use):
+
+```bash
+sudo apt update
+sudo apt install docker.io docker-compose
+```
+
+Add yourself to docker group:
+
+```bash
+sudo usermod -aG docker $USER
+newgrp docker
+```
+
+Start Docker:
+
+```bash
+sudo systemctl start docker
+sudo systemctl enable docker
+```
 
 ## 📊 Comparison with Other Solutions
 
